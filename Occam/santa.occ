@@ -223,8 +223,6 @@ PROC santa (VAL INT seed,
                 from.elf ?? elf.id
                   CLAIM report!
                     report ! goodbye; elf.id
-
-        -- santa goes back to sleep
             
 
 :
