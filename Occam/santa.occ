@@ -1,0 +1,274 @@
+#INCLUDE "protocol.occ"
+#INCLUDE "course.module"
+#INCLUDE "display.occ"
+
+VAL INT N.REINDEER IS 9:
+VAL INT G.REINDEER IS N.REINDEER:
+
+VAL INT N.ELVES IS 10:
+VAL INT G.ELVES IS 3:
+
+VAL INT HOLIDAY.TIME IS 100000:
+VAL INT WORKING.TIME IS 200000:
+VAL INT DELIVERY.TIME IS 100000:
+VAL INT CONSULTATION.TIME IS 200000:
+
+PROC p.barrier.knock (VAL INT n, CHAN BOOL a?, b?, knock!)
+  WHILE TRUE
+    SEQ
+      SEQ i = 0 FOR n
+        BOOL any:
+        a ? any
+      knock ! TRUE
+      SEQ i = 0 FOR n
+        BOOL any:
+        b ? any
+:
+
+PROC p.barrier (VAL INT n, CHAN BOOL a?, b?)
+  WHILE TRUE
+    SEQ
+      SEQ i = 0 FOR n
+        BOOL any:
+        a ? any
+      SEQ i = 0 FOR n
+        BOOL any:
+        b ? any
+:
+
+PROC sync (SHARED CHAN BOOL a!, b!)
+  SEQ
+    CLAIM a!
+      a ! TRUE
+    CLAIM b!
+      b ! TRUE
+:
+
+
+PROC reindeer (VAL INT id, seed, BARRIER just.reindeer, santa.reindeer,
+               SHARED CHAN INT to.santa!, SHARED CHAN REINDEER.MSG report!)
+  INITIAL INT my.seed IS seed:
+  TIMER tim:
+  INT t, wait:
+  SEQ
+    SEQ i = 0 FOR 1000
+      wait, my.seed := random (HOLIDAY.TIME, my.seed)
+    WHILE TRUE
+
+      -- your code goes here
+      SEQ
+        CLAIM report!
+          report ! holiday; id
+
+        wait, my.seed := random (HOLIDAY.TIME, my.seed)
+        tim ? t
+        tim ? AFTER t PLUS wait
+
+        CLAIM report!
+          report ! deer.ready; id
+
+        SYNC just.reindeer
+
+        CLAIM to.santa!
+          to.santa ! id
+
+        SYNC santa.reindeer
+
+        CLAIM report!
+          report ! deliver; id
+
+        SYNC santa.reindeer
+
+        CLAIM report!
+          report ! deer.done; id
+
+        CLAIM to.santa!
+          to.santa ! id
+:
+
+PROC elf (VAL INT id, seed,
+          SHARED CHAN BOOL elves.a!, elves.b!, santa.elves.a!, santa.elves.b!,
+          SHARED CHAN INT to.santa!, SHARED CHAN ELF.MSG report!)
+  INITIAL INT my.seed IS seed:
+  TIMER tim:
+  INT t, wait:
+  SEQ
+    SEQ i = 0 FOR 1000
+      wait, my.seed := random (HOLIDAY.TIME, my.seed)
+    WHILE TRUE
+      
+      -- your code goes here
+      SEQ
+        CLAIM report!
+          report ! working; id
+
+        wait, my.seed := random (WORKING.TIME, my.seed)
+        tim ? t
+        tim ? AFTER t PLUS wait
+
+        CLAIM report!
+          report ! elf.ready; id
+
+        sync(elves.a!, elves.b!)
+
+        CLAIM to.santa!
+          to.santa ! id
+ 
+        sync(santa.elves.a!, santa.elves.b!)
+
+        CLAIM report!
+          report ! consult; id
+
+        sync(santa.elves.a!, santa.elves.b!)
+
+        CLAIM report!
+          report ! elf.done; id
+  
+        CLAIM to.santa!
+          to.santa ! id
+:
+
+PROC santa (VAL INT seed,
+            CHAN BOOL knock?, CHAN INT from.reindeer?, from.elf?, BARRIER santa.reindeer,
+            SHARED CHAN BOOL santa.elves.a!, santa.elves.b!, SHARED CHAN SANTA.MSG report!)
+  INITIAL INT my.seed IS seed:
+  TIMER tim:
+  INT t, wait:
+  SEQ
+    SEQ i = 0 FOR 1000
+      wait, my.seed := random (DELIVERY.TIME, my.seed)
+    WHILE TRUE
+      
+      PRI ALT
+        INT reindeer.id:
+        
+        from.reindeer ? reindeer.id
+          SEQ
+            
+            CLAIM report!
+              report ! reindeer.ready
+
+            
+            CLAIM report!
+              report ! harness; reindeer.id
+
+            
+            SEQ i = 0 FOR N.REINDEER - 1
+              SEQ
+                from.reindeer ? reindeer.id
+                CLAIM report!
+                  report ! harness; reindeer.id
+
+            
+            SYNC santa.reindeer
+
+            
+            CLAIM report!
+              report ! mush.mush
+
+            
+            wait, my.seed := random (DELIVERY.TIME, my.seed)
+            tim ? t
+            tim ? AFTER t PLUS wait
+
+            
+            CLAIM report!
+              report ! woah
+            
+            SYNC santa.reindeer
+
+            
+            SEQ i = 0 FOR N.REINDEER
+              SEQ
+                
+                from.reindeer ?? reindeer.id
+                  CLAIM report!
+                    report ! unharness; reindeer.id
+                    
+        BOOL knock.bool:
+        INT elf.id:
+
+        
+        knock ? knock.bool         
+          SEQ
+            
+            CLAIM report!
+              report ! elves.ready
+
+            
+            SEQ i = 0 FOR G.ELVES
+              SEQ
+                from.elf ? elf.id
+                CLAIM report!
+                  report ! greet; elf.id
+
+            sync(santa.elves.a!, santa.elves.b!)    
+
+            CLAIM report!
+              report ! consulting
+
+            
+            wait, my.seed := random (CONSULTATION.TIME, my.seed)
+            tim ? t
+            tim ? AFTER t PLUS wait
+
+            CLAIM report!
+              report ! santa.done
+
+            sync(santa.elves.a!, santa.elves.b!)
+
+            SEQ i = 0 FOR G.ELVES
+              SEQ
+                
+                from.elf ?? elf.id
+                  CLAIM report!
+                    report ! goodbye; elf.id
+
+        -- santa goes back to sleep
+            
+
+:
+
+PROC santa.claus.problem (CHAN BYTE screen!)
+
+  TIMER tim:
+  INT seed:
+  SEQ
+    tim ? seed
+    seed :=  (seed >> 2) + 42
+    
+    BARRIER just.reindeer, santa.reindeer:
+    SHARED ! CHAN BOOL elves.a, elves.b:
+    CHAN BOOL knock:    
+    SHARED ! CHAN BOOL santa.elves.a, santa.elves.b:
+    SHARED ! CHAN INT reindeer.santa, elf.santa:
+    SHARED ! CHAN MESSAGE report:
+    
+    PAR
+
+      -- your code goes here
+
+      
+      display(report? , screen!)
+
+      
+      p.barrier.knock(G.ELVES, elves.a?, elves.b?, knock!)
+
+      
+      p.barrier(G.ELVES+1, santa.elves.a?, santa.elves.b?)
+      
+      
+      PAR i = 0 FOR N.ELVES
+        elf(i, seed, elves.a!, elves.b!, santa.elves.a!, santa.elves.b!, elf.santa!, report!)
+      
+     
+      PAR ENROLL santa.reindeer
+        
+        santa(seed, knock?, reindeer.santa?, elf.santa?, santa.reindeer, santa.elves.a!, santa.elves.b!, report!)
+
+        
+        PAR i=0 FOR N.REINDEER ENROLL just.reindeer, santa.reindeer
+          reindeer(i, seed, just.reindeer, santa.reindeer, reindeer.santa!, report!)
+
+
+:
